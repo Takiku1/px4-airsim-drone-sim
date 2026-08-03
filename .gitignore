@@ -1,0 +1,12 @@
+# 飞行产物 / 输出（不入库）
+trajectory_*.csv
+trajectory_*.svg
+*.ulg
+ulg_csv/
+__pycache__/
+*.pyc
+mission_status.txt
+
+# 本地杂项
+disk_cleanup_plan_*.md
+*.log
