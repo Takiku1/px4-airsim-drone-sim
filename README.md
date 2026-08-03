@@ -1,6 +1,7 @@
 # PX4 + AirSim 无人机仿真链路（方形航线自动飞行 + 日志分析）
 
 [![CI](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/ci.yml/badge.svg)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/ci.yml)
+[![Phase 2](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/sim-flight.yml/badge.svg)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/sim-flight.yml)
 
 > 无需实机，即可在 PC 上搭建一条完整的无人机**仿真 / 系统测试**链路：
 > **PX4 SITL（WSL2） ↔ AirSim（UE5.3 / Windows） ↔ MAVSDK-Python ↔ QGroundControl**，
@@ -129,11 +130,14 @@ MPC_XY_CRUISE  = 1.5
 | 工作流 | 文件 | 内容 | 触发 |
 | --- | --- | --- | --- |
 | 代码质量 CI（Phase 1） | `.github/workflows/ci.yml` | `py_compile` + `bash -n` 语法检查 + `pytest` 跑 `analyze_ulg.py` 回归（真实样本 95.3 / 完美方形 ≥95 / 随机轨迹 <50） | push / PR |
-| 真飞闭环 CI（Phase 2） | `.github/workflows/sim-flight.yml` | 云端拉起 **PX4 headless SITL（SIH，预构建容器，无需 GPU）** → MAVSDK offboard 飞 10m 方形 → `check_square.py` 断言方形度 > 80 | 手动 `workflow_dispatch` |
+| 轨迹回归门禁 CI（Phase 2） | `.github/workflows/sim-flight.yml` | 用本地已验证的真实飞行遥测 `tests/fixtures/trajectory_golden.csv`（方形度 95.3）作 golden fixture，在 CI 反复校验 `check_square.py` 方形度评分能识别干净方形（>80）；并跑 `pytest` 分析回归 | push / PR / 手动 |
 
-> Phase 2 采用 PX4 官方预构建 `px4io/px4-sitl`（SIH，headless）容器，而非从源码编译 PX4——
-> SIH 是内置传感器仿真器，与 jMAVSim 同为 PX4 SITL 仿真器，对 MAVSDK offboard 航线动力学等价，
-> 但启动快（~100MB 镜像）、无需 GPU / AirSim，更适合 CI。
+> **Phase 2 为什么是"回归门禁"而不是"云端真飞"**：GitHub 托管 runner 上 `docker run` 拉起 PX4 SIH
+> 会挂死（已三次验证，与网络模式无关），且 PX4 官方 `.deb` 未发布在 GitHub release —— 云端目前无法
+> 可靠跑真实 SITL。因此把本地已验证的真实飞行遥测（方形度 95.3，MAVSDK 遥测 + PX4 机载 `ulg` 双源
+> 交叉验证）固化进仓库作为 golden 样本，在 CI 中持续校验评分逻辑。真实 SITL 飞行本身是项目核心能力，
+> 已在本地（WSL PX4 SIH + MAVSDK offboard）实测达成，可作演示 / 本地回归；未来若要在 CI 跑真实仿真，
+> 可在本机部署 **self-hosted runner**（WSL 原生跑 PX4，规避 GitHub runner 的 docker 限制）。
 > `check_square.py` 读取 `square_mission.py` 输出的 MAVSDK 轨迹 CSV（`north_m/east_m/down_m/phase`），
 > 按相位提取四角点，计算边长 / 闭合 / 夹角 / 高度稳定性并评分，复用 `analyze_ulg.py` 的加权方法论。
 

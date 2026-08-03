@@ -1,5 +1,7 @@
 # 飞行产物 / 输出（不入库）
 trajectory_*.csv
+# 例外: 仓库刻意保留的真实飞行 golden 样本(回归门禁用), 需入库
+!tests/fixtures/trajectory_golden.csv
 trajectory_*.svg
 *.ulg
 ulg_csv/
