@@ -122,6 +122,23 @@ MPC_XY_CRUISE  = 1.5
 
 ---
 
+## 自动化仿真测试 (CI)
+
+本项目把"飞行—采集—评分"闭环接入 GitHub Actions，作为可复现的回归测试：
+
+| 工作流 | 文件 | 内容 | 触发 |
+| --- | --- | --- | --- |
+| 代码质量 CI（Phase 1） | `.github/workflows/ci.yml` | `py_compile` + `bash -n` 语法检查 + `pytest` 跑 `analyze_ulg.py` 回归（真实样本 95.3 / 完美方形 ≥95 / 随机轨迹 <50） | push / PR |
+| 真飞闭环 CI（Phase 2） | `.github/workflows/sim-flight.yml` | 云端拉起 **PX4 headless SITL（SIH，预构建容器，无需 GPU）** → MAVSDK offboard 飞 10m 方形 → `check_square.py` 断言方形度 > 80 | 手动 `workflow_dispatch` |
+
+> Phase 2 采用 PX4 官方预构建 `px4io/px4-sitl`（SIH，headless）容器，而非从源码编译 PX4——
+> SIH 是内置传感器仿真器，与 jMAVSim 同为 PX4 SITL 仿真器，对 MAVSDK offboard 航线动力学等价，
+> 但启动快（~100MB 镜像）、无需 GPU / AirSim，更适合 CI。
+> `check_square.py` 读取 `square_mission.py` 输出的 MAVSDK 轨迹 CSV（`north_m/east_m/down_m/phase`），
+> 按相位提取四角点，计算边长 / 闭合 / 夹角 / 高度稳定性并评分，复用 `analyze_ulg.py` 的加权方法论。
+
+---
+
 ## 项目价值（面向系统测试 / 仿真岗）
 
 - ✅ 从零打通跨平台（Windows + WSL2）仿真链路，理解 SITL / HITL 边界。

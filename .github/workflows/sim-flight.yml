@@ -1,0 +1,80 @@
+name: PX4 SITL Flight Test (Phase 2)
+
+# 手动触发 (调试稳定后再考虑挂 push/PR)
+on:
+  workflow_dispatch:
+
+# 允许手动取消 / 读取仓库内容
+permissions:
+  contents: read
+
+jobs:
+  sitl-flight:
+    name: PX4 headless SITL + MAVSDK offboard square
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space (PX4/Docker 清场)
+        # SIH 镜像仅 ~100MB，但 runner 出厂盘较满，先清出空间更稳妥
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Pull PX4 SIH SITL image (prebuilt, headless)
+        # 说明: 采用 PX4 官方预构建容器 px4io/px4-sitl (SIH, headless, 无需构建 PX4 源码,
+        # 也无 GPU/AirSim 依赖)。SIH 是内置传感器仿真器, 与 jMAVSim 同为 PX4 SITL 仿真器,
+        # 对 MAVSDK offboard 方形航线而言动力学等价, 但启动快、风险低, 适合 CI。
+        run: docker pull px4io/px4-sitl:latest
+
+      - name: Start PX4 SITL (SIH) in background
+        run: |
+          docker run -d --rm --network host --name px4sitl px4io/px4-sitl:latest
+          echo "waiting for PX4 to become ready ..."
+          for i in $(seq 1 150); do
+            docker logs px4sitl 2>&1 | grep -qi "Ready to fly" && { echo "PX4 ready after ${i}s"; break; }
+            sleep 1
+          done
+          echo "===== PX4 boot log (tail) ====="
+          docker logs px4sitl 2>&1 | tail -50
+
+      - name: Install MAVSDK (runner, isolated venv)
+        run: |
+          python3 -m venv /tmp/venv 2>/dev/null \
+            || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv && python3 -m venv /tmp/venv; }
+          /tmp/venv/bin/pip install --quiet mavsdk
+          echo "MAVSDK installed: $(/tmp/venv/bin/python3 -c 'import mavsdk; print(mavsdk.__version__)')"
+
+      - name: Fly square via MAVSDK offboard + assert squareness
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          /tmp/venv/bin/python3 square_mission.py \
+            --addr udp://:14540 --out-dir "$PWD" \
+            --alt 5 --side 10 --seg-timeout 45 --hold 1
+          echo "===== trajectory files ====="
+          ls -la trajectory_*.csv || true
+
+      - name: Assert squareness > 80 (read MAVSDK CSV)
+        run: /tmp/venv/bin/python3 check_square.py --threshold 80
+
+      - name: Stop PX4 container
+        if: always()
+        run: docker stop px4sitl 2>/dev/null || true
+
+      - name: Upload trajectory artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trajectory-csv
+          path: trajectory_*.csv
+          if-no-files-found: warn
