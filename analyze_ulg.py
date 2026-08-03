@@ -6,8 +6,11 @@ import csv, math, sys, os
 DEFAULT = r"D:\AirSim\mission\ulg_csv\07_50_35_vehicle_local_position_0.csv"
 OUT_SVG = r"D:\AirSim\mission\trajectory_ulg_20260803.svg"
 
-def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
+def run_analysis(path, out_svg=None):
+    """分析一条 vehicle_local_position CSV，返回 (score, svg_str)。
+
+    out_svg 为 None 时只返回结果不写文件（便于测试/CI 调用）。
+    """
     xs, ys, zs, ts, vxs, vys = [], [], [], [], [], []
     with open(path, newline='') as f:
         r = csv.DictReader(f)
@@ -82,9 +85,11 @@ def main():
     # ---- 生成 SVG ----
     svg = build_svg(xs, ys, hs, ts, air, legs, north_span, east_span,
                     am, astd, max(spd), closure_origin, score)
-    with open(OUT_SVG, 'w') as f:
-        f.write(svg)
-    print(f"\n[svg] 已写出: {OUT_SVG}")
+    if out_svg:
+        with open(out_svg, 'w') as f:
+            f.write(svg)
+        print(f"\n[svg] 已写出: {out_svg}")
+    return score, svg
 
 def detect_legs(xs, ys, hs, ts):
     """在巡航高度带内，按航向量化切分直飞腿。"""
@@ -175,6 +180,10 @@ def build_svg(xs, ys, hs, ts, air, legs, nspan, espan, am, astd, vmax, clos, sco
         parts.append(f'<text x="{pad}" y="{H-40+k*16}" font-size="11" fill="#444">{t}</text>')
     parts.append('</svg>')
     return "\n".join(parts)
+
+def main():
+    path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
+    run_analysis(path, OUT_SVG)
 
 if __name__ == "__main__":
     main()

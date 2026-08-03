@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 说明：GitHub 免费 runner 无 GPU，跑不了 UE5.3 渲染 + 完整 PX4/AirSim 飞行。
+# 本 CI 守护"仿真测试工具链"本身：脚本语法/lint 检查 + 轨迹分析/方形度评分的回归测试。
+# （这正是系统测试岗关注的"测试框架可执行、可回归"能力）
+
+jobs:
+  lint:
+    name: Lint (syntax check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python syntax check
+        run: |
+          python -m py_compile analyze_ulg.py square_mission.py
+      - name: Shell syntax check
+        run: |
+          for f in run_flight_mission.sh extract_ulg.sh diag_ulg.sh; do
+            bash -n "$f" || exit 1
+          done
+
+  test:
+    name: Test (trajectory analysis regression)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+      - name: Run pytest
+        run: pytest -v tests/

@@ -1,5 +1,7 @@
 # PX4 + AirSim 无人机仿真链路（方形航线自动飞行 + 日志分析）
 
+[![CI](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/ci.yml/badge.svg)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/ci.yml)
+
 > 无需实机，即可在 PC 上搭建一条完整的无人机**仿真 / 系统测试**链路：
 > **PX4 SITL（WSL2） ↔ AirSim（UE5.3 / Windows） ↔ MAVSDK-Python ↔ QGroundControl**，
 > 自动执行方形航线飞行，并基于 PX4 机载 `ulg` 日志做轨迹评分。

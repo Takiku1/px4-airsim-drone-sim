@@ -5,6 +5,7 @@ trajectory_*.svg
 ulg_csv/
 __pycache__/
 *.pyc
+.pytest_cache/
 mission_status.txt
 
 # 本地杂项
