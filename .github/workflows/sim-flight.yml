@@ -19,7 +19,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Free disk space (PX4/Docker 清场)
-        # SIH 镜像仅 ~100MB，但 runner 出厂盘较满，先清出空间更稳妥
+        # SIH 镜像仅 ~100MB，但 runner 出厂盘较满，先清出空间更稳妥。
+        # 注意: docker-images 设为 false —— 不动 docker 守护进程/镜像，避免影响后续 docker run。
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: false
@@ -27,7 +28,7 @@ jobs:
           dotnet: true
           haskell: true
           large-packages: true
-          docker-images: true
+          docker-images: false
           swap-storage: true
 
       - name: Pull PX4 SIH SITL image (prebuilt, headless)
@@ -38,20 +39,25 @@ jobs:
 
       - name: Start PX4 SITL (SIH) in background
         run: |
-          # SIH 预构建容器必须显式指定机型 (PX4_SIM_MODEL, 文档 required), 否则 PX4 不启动、
-          # 也不会输出 Ready to fly。host 网络让 PX4 的 14540(offboard) 直连 runner 本机 MAVSDK。
-          docker run -d --rm --network host --name px4sitl \
+          # SIH 预构建容器必须显式指定机型 (PX4_SIM_MODEL, 文档 required), 否则 PX4 不启动。
+          # 关键: GitHub 托管 runner 不支持 --network host (实测会挂死 step)。
+          # 改用默认 bridge 网络 + 显式 UDP 端口映射 —— 这是 PX4 官方 MAVSDK quick-start 的作法:
+          #   主机 localhost:14540 经 docker 映射到容器 14540 (PX4 监听),
+          #   MAVSDK 在主机侧连 udp://:14540 即可, 双向遥测靠 MAVLink UDP NAT 自然打通。
+          # 这与我们本地 (PX4 原生进程监听 14540 + MAVSDK 连 14540) 验证过的模式逻辑等价。
+          docker run -d --rm --name px4sitl \
+            -p 14540:14540/udp -p 14550:14550/udp \
             -e PX4_SIM_MODEL=sihsim_quadx \
             px4io/px4-sitl:latest
-          echo "waiting for PX4 to listen on UDP 14540 (offboard) ..."
+          echo "waiting for PX4 to bind UDP 14540 (inside container) ..."
           for i in $(seq 1 90); do
-            if ss -lunp 2>/dev/null | grep -q ':14540'; then
+            if docker exec px4sitl bash -c 'ss -lunp 2>/dev/null | grep -q :14540 || netstat -lunp 2>/dev/null | grep -q :14540' 2>/dev/null; then
               echo "PX4 offboard port 14540 is up after ~$((i*2))s"; break
             fi
             sleep 2
           done
-          if ! ss -lunp 2>/dev/null | grep -q ':14540'; then
-            echo "ERROR: PX4 did not expose UDP 14540 within timeout"; echo "--- PX4 log tail ---"; docker logs px4sitl 2>&1 | tail -40; exit 1
+          if ! docker exec px4sitl bash -c 'ss -lunp 2>/dev/null | grep -q :14540 || netstat -lunp 2>/dev/null | grep -q :14540' 2>/dev/null; then
+            echo "ERROR: PX4 did not bind UDP 14540 within timeout"; echo "--- PX4 log tail ---"; docker logs px4sitl 2>&1 | tail -40; exit 1
           fi
           echo "===== PX4 boot log (tail) ====="
           docker logs px4sitl 2>&1 | tail -40
