@@ -38,14 +38,23 @@ jobs:
 
       - name: Start PX4 SITL (SIH) in background
         run: |
-          docker run -d --rm --network host --name px4sitl px4io/px4-sitl:latest
-          echo "waiting for PX4 to become ready ..."
-          for i in $(seq 1 150); do
-            docker logs px4sitl 2>&1 | grep -qi "Ready to fly" && { echo "PX4 ready after ${i}s"; break; }
-            sleep 1
+          # SIH 预构建容器必须显式指定机型 (PX4_SIM_MODEL, 文档 required), 否则 PX4 不启动、
+          # 也不会输出 Ready to fly。host 网络让 PX4 的 14540(offboard) 直连 runner 本机 MAVSDK。
+          docker run -d --rm --network host --name px4sitl \
+            -e PX4_SIM_MODEL=sihsim_quadx \
+            px4io/px4-sitl:latest
+          echo "waiting for PX4 to listen on UDP 14540 (offboard) ..."
+          for i in $(seq 1 90); do
+            if ss -lunp 2>/dev/null | grep -q ':14540'; then
+              echo "PX4 offboard port 14540 is up after ~$((i*2))s"; break
+            fi
+            sleep 2
           done
+          if ! ss -lunp 2>/dev/null | grep -q ':14540'; then
+            echo "ERROR: PX4 did not expose UDP 14540 within timeout"; echo "--- PX4 log tail ---"; docker logs px4sitl 2>&1 | tail -40; exit 1
+          fi
           echo "===== PX4 boot log (tail) ====="
-          docker logs px4sitl 2>&1 | tail -50
+          docker logs px4sitl 2>&1 | tail -40
 
       - name: Install MAVSDK (runner, isolated venv)
         run: |
