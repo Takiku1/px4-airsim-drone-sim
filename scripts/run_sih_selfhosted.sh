@@ -25,12 +25,18 @@ if [ "$READY" -ne 1 ]; then
 fi
 
 echo "== fly square + score =="
-cd "$REPO"
-python3 square_mission.py
-latest=$(ls -t trajectory_*.csv | head -1)
-if [ -z "$latest" ]; then echo "ERROR: square_mission.py 未产生轨迹 CSV"; kill $PX4PID 2>/dev/null; exit 1; fi
+# square_mission.py 默认把轨迹写到 Windows 侧 D:\AirSim\mission (WSL:/mnt/d/AirSim/mission),
+# 而非 checkout 目录, 因此从这里抓轨迹, 并用脚本末尾打印的路径精确锁定最新文件
+MISSION="/mnt/d/AirSim/mission"
+mkdir -p "$MISSION"
+OUT=$(python3 "$REPO/square_mission.py" --out-dir "$MISSION" 2>&1 | tee /dev/stderr | grep -oP '轨迹: \K\S+')
+latest="$OUT"
+if [ -z "$latest" ] || [ ! -f "$latest" ]; then
+  echo "ERROR: square_mission.py 未产生轨迹 CSV (捕获到: '$latest')"
+  kill $PX4PID 2>/dev/null; exit 1
+fi
 echo "scoring $latest"
-python3 check_square.py --input "$latest" --threshold 80 || RC=$?
+python3 "$REPO/check_square.py" --input "$latest" --threshold 80 || RC=$?
 
 kill $PX4PID 2>/dev/null
 echo "exit code = $RC"

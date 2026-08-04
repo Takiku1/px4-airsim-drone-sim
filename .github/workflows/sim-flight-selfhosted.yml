@@ -14,10 +14,8 @@ jobs:
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
         run: |
-          # runner checkout 在 Windows 路径; 转成 WSL 可访问路径
-          WSLPATH=$(wsl -d Ubuntu-22.04 -- bash -c "wslpath -a '${{ github.workspace }}'")
-          echo "repo wsl path: $WSLPATH"
-          wsl -d Ubuntu-22.04 -- bash "$WSLPATH/scripts/run_sih_selfhosted.sh" "$WSLPATH"
+          # 用单引号 payload + 位置参数传 Windows 路径, 彻底绕开 Git Bash 对 /mnt/d 的相对路径解析
+          wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "${{ github.workspace }}"
 
       - name: Upload SIH trajectory artifact
         if: always()
