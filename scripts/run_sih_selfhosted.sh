@@ -9,7 +9,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 arg="${1:-/mnt/d/AirSim/mission/px4-airsim-drone-sim}"
 case "$arg" in
   /mnt/*)       REPO="$arg" ;;
-  [A-Za-z]:*)   d="${arg:0:1}"; d="${d,,}"; REPO="/mnt/${d}/${arg:3}" ;;
+  [A-Za-z]:*)   d="${arg:0:1}"; d="${d,,}"; rest="${arg:3}"; rest="${rest//\\//}"; REPO="/mnt/${d}/${rest}" ;;
   *)            REPO="/mnt/d/AirSim/mission/px4-airsim-drone-sim" ;;
 esac
 RC=0
