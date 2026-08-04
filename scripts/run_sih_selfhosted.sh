@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 在 WSL 内拉起 PX4 SIH -> 飞 10x10 方框 -> check_square 断言 >80
 # 由 sim-flight-selfhosted.yml 的 self-hosted runner 调用。
-# 参数 $1 = 仓库在 WSL 中的路径 (Windows 侧 D:\AirSim\mission\px4-airsim-drone-sim 经 wslpath -u 转换后传入)
+# 参数 $1 = 仓库在 WSL 中的路径 (硬编码 /mnt/d/AirSim/mission/px4-airsim-drone-sim)
 set -e
 # 非交互 wsl shell 的 PATH 可能不全, 显式补上标准路径
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
@@ -17,23 +17,35 @@ fi
 
 echo "== start PX4 SIH (WSL, headless, 内置物理引擎, 无需 AirSim/Gazebo) =="
 cd ~/PX4-Autopilot
-# 后台拉起 PX4；SIH 监听 udp 14580、把 mavlink 发往 14540(MAVSDK 客户端侧)
-nohup make px4_sitl sihsim_quadx > /tmp/px4_sih.log 2>&1 &
+PX4BIN=build/px4_sitl_sihsim_quadx/bin/px4
+# 已编译则直接跑(省去重新编译的环境/时间开销); 否则用 make 增量编译
+if [ -x "$PX4BIN" ]; then
+  echo "== sihsim_quadx 已存在, 直接启动 =="
+  nohup "$PX4BIN" > /tmp/px4_sih.log 2>&1 &
+else
+  echo "== 未找到 SIH 二进制, 增量编译 sihsim_quadx =="
+  nohup make px4_sitl sihsim_quadx > /tmp/px4_sih.log 2>&1 &
+fi
 PX4PID=$!
 echo "px4 pid=$PX4PID"
 
-echo "== wait for PX4 SIH UDP endpoint :14580 (端口十六进制 38F4) =="
+echo "== wait for PX4 SIH UDP :14580 / :14540 (hex 38F4 / 390C) =="
 READY=0
-for i in $(seq 1 90); do
+for i in $(seq 1 240); do
   # 优先 ss; 缺失则回退到 /proc/net/udp 解析(14580=0x38F4, 14540=0x390C)
   if { command -v ss >/dev/null 2>&1 && ss -lunp 2>/dev/null | grep -qE ':14580|:14540'; } \
      || grep -qiE ':38F4|:390C' /proc/net/udp 2>/dev/null; then
     echo "PX4 SIH ready after ~$((i*2))s"; READY=1; break
   fi
+  # 若 PX4 进程已退出, 说明编译/启动失败, 提前报错并打日志
+  if ! kill -0 $PX4PID 2>/dev/null; then
+    echo "PX4 进程已退出(编译或启动失败). /tmp/px4_sih.log 尾部:"; tail -40 /tmp/px4_sih.log
+    exit 1
+  fi
   sleep 2
 done
 if [ "$READY" -ne 1 ]; then
-  echo "PX4 failed to start. tail of /tmp/px4_sih.log:"; tail -40 /tmp/px4_sih.log
+  echo "PX4 在超时内未就绪. /tmp/px4_sih.log 尾部:"; tail -40 /tmp/px4_sih.log
   kill $PX4PID 2>/dev/null; exit 1
 fi
 
