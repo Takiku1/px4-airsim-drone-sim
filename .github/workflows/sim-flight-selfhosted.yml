@@ -12,13 +12,16 @@ jobs:
       # 直接让 wsl 跑本地仓库: 零拷贝 / 零联网(checkout 被 GFW 掐 github.com:443; cp/tar 又踩 Windows 只读对象权限)
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
-        env:
-          MSYS_NO_PATHCONV: 1   # 关掉 Git Bash 对传给 wsl.exe 的 D:\ 参数的自动路径转换(否则 D:\ 变 /d/, wslpath 解析为空)
         run: |
-          # 用单引号字面量存 Windows 路径, 避開 YAML 双引号对反斜杠 \A \m \p 的转义吃掉
+          # runner 本机仓库 Windows 路径: D:\AirSim\mission\px4-airsim-drone-sim
           WINREPO='D:\AirSim\mission\px4-airsim-drone-sim'
-          echo "WINREPO=$WINREPO"
-          wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; ls -l "$REPO/scripts/run_sih_selfhosted.sh"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "$WINREPO"
+          # 在 Git Bash 里用 sed 把 Windows 路径转成 WSL 路径 (D:\x -> /mnt/d/x)
+          # 不依赖 wslpath(本发行版 wslpath -u 对反斜杠路径返回空, 导致 $REPO 空 -> 127)
+          WSL_REPO=$(printf '%s' "$WINREPO" | sed -E 's|\\|/|g; s|^([A-Za-z]):|/mnt/\L\1|')
+          echo "WSL_REPO=$WSL_REPO"
+          # 通过环境变量传 WSL 路径: 环境变量值不受 MSYS 参数路径转换影响, wsl 内直接读, 不再调 wslpath
+          # 兜底: 若环境变量没透传, 退回硬编码的 WSL 路径
+          REPO_WSL="$WSL_REPO" wsl -d Ubuntu-22.04 -- bash -c 'REPO="${REPO_WSL:-/mnt/d/AirSim/mission/px4-airsim-drone-sim}"; echo "repo wsl path: $REPO"; ls -l "$REPO/scripts/run_sih_selfhosted.sh" && bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"'
 
       - name: Upload SIH trajectory artifact
         if: always()
