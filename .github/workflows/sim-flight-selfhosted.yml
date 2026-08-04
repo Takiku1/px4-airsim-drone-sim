@@ -12,15 +12,16 @@ jobs:
       # 直接让 wsl 跑本地仓库: 零拷贝 / 零联网(checkout 被 GFW 掐 github.com:443; cp/tar 又踩 Windows 只读对象权限)
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
+        env:
+          MSYS_NO_PATHCONV: 1   # 关键组合: 阻止 MSYS2 把 D:\ 的反斜杠吞掉, 让 Windows 反斜杠 D:\ 原样进 wsl
         run: |
-          # 本机 runner 的 Git Bash(MSYS2) 路径转换的大坑:
-          #   /mnt/d/  -> MSYS2 不认, 整段吞掉
-          #   D:/      -> 原样过, 但 wsl 不转换 forward slash
-          #   D:\      -> 反斜杠被 MSYS2 吞掉 -> D:AirSim...
-          # 唯一能完整走通 MSYS2->wsl 双向转换的: Git Bash 原生盘符 /d/AirSim/...
-          #   MSYS2 可靠转成 Windows D:\, wsl 再把 D:\ 原生转回 /mnt/d/ (wsl 只认反斜杠 Windows 路径做参数转换)
-          # 不用 bash -c(其内部 $()/引号会被 wsl 脆弱解析); 直接把脚本路径+参数作为 wsl 直接参数。
-          wsl -d Ubuntu-22.04 bash "/d/AirSim/mission/px4-airsim-drone-sim/scripts/run_sih_selfhosted.sh" "/d/AirSim/mission/px4-airsim-drone-sim"
+          # 唯一走通的组合: MSYS_NO_PATHCONV=1 + 单引号保留的 Windows 反斜杠 D:\ 直接参数
+          #   - 不加 MSYS_NO_PATHCONV 时, MSYS2 会把 D:\ 的反斜杠整段吞掉 -> D:AirSim...
+          #   - 用 D:/ 时 wsl 不转换 forward slash
+          #   - 用 /mnt/d/ 时 MSYS2 整段吞掉; 用 /d/ 时 MSYS2 转成 D:/ (forward, wsl 也不转)
+          #   wsl 只认反斜杠 D:\ 直接参数做参数转换 -> /mnt/d/
+          # 直接把脚本路径+参数作为 wsl 直接参数(不用 bash -c, 避开 $()/引号脆弱解析)
+          wsl -d Ubuntu-22.04 bash 'D:\AirSim\mission\px4-airsim-drone-sim\scripts\run_sih_selfhosted.sh' 'D:\AirSim\mission\px4-airsim-drone-sim'
 
       - name: Upload SIH trajectory artifact
         if: always()
