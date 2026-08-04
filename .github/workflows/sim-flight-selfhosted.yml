@@ -13,8 +13,10 @@ jobs:
 
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
+        env:
+          MSYS_NO_PATHCONV: 1   # 关掉 Git Bash 对传给 wsl.exe 的 D:\ 参数的自动路径转换(否则 D:\ 变 /d/, wslpath 解析为空)
         run: |
-          # 用单引号 payload + 位置参数传 Windows 路径, 彻底绕开 Git Bash 对 /mnt/d 的相对路径解析
+          # 用单引号 payload + 位置参数传 Windows 路径, MSYS_NO_PATHCONV 保证 D:\ 原样传入
           wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "${{ github.workspace }}"
 
       - name: Upload SIH trajectory artifact
