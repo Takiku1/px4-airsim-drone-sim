@@ -13,15 +13,13 @@ jobs:
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
         env:
-          MSYS_NO_PATHCONV: 1   # 关键组合: 阻止 MSYS2 把 D:\ 的反斜杠吞掉, 让 Windows 反斜杠 D:\ 原样进 wsl
+          MSYS_NO_PATHCONV: 1
         run: |
-          # 唯一走通的组合: MSYS_NO_PATHCONV=1 + 单引号保留的 Windows 反斜杠 D:\ 直接参数
-          #   - 不加 MSYS_NO_PATHCONV 时, MSYS2 会把 D:\ 的反斜杠整段吞掉 -> D:AirSim...
-          #   - 用 D:/ 时 wsl 不转换 forward slash
-          #   - 用 /mnt/d/ 时 MSYS2 整段吞掉; 用 /d/ 时 MSYS2 转成 D:/ (forward, wsl 也不转)
-          #   wsl 只认反斜杠 D:\ 直接参数做参数转换 -> /mnt/d/
-          # 直接把脚本路径+参数作为 wsl 直接参数(不用 bash -c, 避开 $()/引号脆弱解析)
-          wsl -d Ubuntu-22.04 bash 'D:\AirSim\mission\px4-airsim-drone-sim\scripts\run_sih_selfhosted.sh' 'D:\AirSim\mission\px4-airsim-drone-sim'
+          # 路径转换最终方案(经多轮迭代验证):
+          #   MSYS2 把 /d/AirSim/... 可靠转成 D:/AirSim/...(forward slash, 不会被吞, 也不触发 wsl 转换)
+          #   进 wsl 后用【纯 bash 参数展开】把 D:/x 转成 /mnt/d/x(无 wslpath/sed/引号, 最稳)
+          #   不用反斜杠(被 MSYS2 当转义吞掉)、不用双引号(被 MSYS2 转义成 \")、不用 wslpath(反斜杠形式返回空)
+          wsl -d Ubuntu-22.04 -- bash -c 'WIN=D:/AirSim/mission/px4-airsim-drone-sim; D=${WIN:0:1}; D=${D,,}; REPO=/mnt/$D/${WIN:2}; bash $REPO/scripts/run_sih_selfhosted.sh $REPO'
 
       - name: Upload SIH trajectory artifact
         if: always()
