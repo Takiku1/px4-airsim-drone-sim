@@ -1,0 +1,27 @@
+name: PX4 SITL Flight Test (Self-Hosted, SIH)
+
+# 安全: 仅手动触发。绝不开 push / pull_request —— 公开仓库的 fork PR 会在本机执行任意代码。
+on:
+  workflow_dispatch:
+
+jobs:
+  self-hosted-sih-flight:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build & run PX4 SIH, fly square, assert squareness > 80
+        shell: bash
+        run: |
+          # runner checkout 在 Windows 路径; 转成 WSL 可访问路径
+          WSLPATH=$(wsl -d Ubuntu-22.04 -- bash -c "wslpath -a '${{ github.workspace }}'")
+          echo "repo wsl path: $WSLPATH"
+          wsl -d Ubuntu-22.04 -- bash "$WSLPATH/scripts/run_sih_selfhosted.sh" "$WSLPATH"
+
+      - name: Upload SIH trajectory artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sih-trajectory
+          path: D:\AirSim\mission\trajectory_*.csv
