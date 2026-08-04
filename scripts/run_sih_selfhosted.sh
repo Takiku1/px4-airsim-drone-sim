@@ -5,7 +5,13 @@
 set -e
 # 非交互 wsl shell 的 PATH 可能不全, 显式补上标准路径
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-REPO="${1:-/mnt/d/AirSim/mission/px4-airsim-drone-sim}"
+# $1 可能是 wsl 已转换的 /mnt/d/... 或未经转换的 D:/.../D:\...; 纯 bash 兜底, 不依赖 sed/外部工具
+arg="${1:-/mnt/d/AirSim/mission/px4-airsim-drone-sim}"
+case "$arg" in
+  /mnt/*)       REPO="$arg" ;;
+  [A-Za-z]:*)   d="${arg:0:1}"; d="${d,,}"; REPO="/mnt/${d}/${arg:3}" ;;
+  *)            REPO="/mnt/d/AirSim/mission/px4-airsim-drone-sim" ;;
+esac
 RC=0
 
 # 守卫: 路径必须有效且含 square_mission.py, 否则提前报错(避免下面 bash 找不到文件 -> 127)
