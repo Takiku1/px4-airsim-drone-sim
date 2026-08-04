@@ -96,13 +96,19 @@ class TelemetryRecorder:
         print(f"[rec ] {len(self.rows)} 条遥测已写入 {self.csv_path}")
 
 
-async def wait_connected(drone, addr):
-    print(f"[conn] 连接 {addr} ...")
+async def wait_connected(drone, addr, timeout=60):
+    print(f"[conn] 连接 {addr} (超时 {timeout}s) ...")
     await drone.connect(system_address=addr)
+    deadline = time.time() + timeout
     async for state in drone.core.connection_state():
         if state.is_connected:
             print("[conn] 已连接到飞控")
             return
+        if time.time() > deadline:
+            raise RuntimeError(
+                f"连接 {addr} 超时 {timeout}s: 未收到 is_connected 心跳 "
+                f"(请确认 PX4 SIH 已启动且在 14540 发 MAVLink)"
+            )
     raise RuntimeError("连接失败")
 
 

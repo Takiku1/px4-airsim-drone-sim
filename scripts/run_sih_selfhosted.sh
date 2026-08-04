@@ -41,7 +41,10 @@ for i in $(seq 1 240); do
   # 优先 ss; 缺失则回退到 /proc/net/udp 解析(14580=0x38F4, 14540=0x390C)
   if { command -v ss >/dev/null 2>&1 && ss -lunp 2>/dev/null | grep -qE ':14580|:14540'; } \
      || grep -qiE ':38F4|:390C' /proc/net/udp 2>/dev/null; then
-    echo "PX4 SIH ready after ~$((i*2))s"; READY=1; break
+    echo "PX4 SIH ready after ~$((i*2))s"; READY=1
+    echo "== 端口监听确认(ss) =="; (ss -lunp 2>/dev/null | grep -E ':14540|:14580') || true
+    echo "== /proc/net/udp 匹配 =="; (grep -iE ':38F4|:390C' /proc/net/udp 2>/dev/null) || true
+    break
   fi
   # 若 PX4 进程已退出, 说明编译/启动失败, 提前报错并打日志
   if ! kill -0 $PX4PID 2>/dev/null; then
@@ -61,14 +64,20 @@ echo "== fly square + score =="
 MISSION="/mnt/d/AirSim/mission"
 mkdir -p "$MISSION"
 # 注意: grep 找不到时返回非 0, 用 || true 防止 set -e 提前退出
-OUT=$(python3 "$REPO/square_mission.py" --out-dir "$MISSION" 2>&1 | tee /dev/stderr | grep -oP '轨迹: \K\S+' || true)
+# 用 timeout 包裹, 防止 MAVSDK 连接/飞行任何分支卡死(之前 wait_connected 无超时导致整条 run 挂 27 分钟)
+OUT=$(timeout 360 python3 "$REPO/square_mission.py" --out-dir "$MISSION" 2>&1 | tee /dev/stderr | grep -oP '轨迹: \K\S+' || true)
 latest="$OUT"
 if [ -z "$latest" ] || [ ! -f "$latest" ]; then
   echo "ERROR: square_mission.py 未产生轨迹 CSV (捕获到: '$latest')"
+  echo "== PX4 SIH 日志尾部 (排查连接/启动) =="; tail -50 /tmp/px4_sih.log || true
   kill $PX4PID 2>/dev/null; exit 1
 fi
 echo "scoring $latest"
 python3 "$REPO/check_square.py" --input "$latest" --threshold 80 || RC=$?
+if [ "$RC" -ne 0 ]; then
+  echo "== flight/scoring 失败 (RC=$RC), PX4 SIH 日志尾部 =="
+  tail -50 /tmp/px4_sih.log || true
+fi
 
 kill $PX4PID 2>/dev/null
 echo "exit code = $RC"
