@@ -8,8 +8,18 @@ jobs:
   self-hosted-sih-flight:
     runs-on: self-hosted
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # 自托管 runner 跑在本人机器上, 代码已在本机 D:\AirSim\mission\px4-airsim-drone-sim
+      # 直接拷进 workspace, 完全绕过 github.com:443 的 GFW 直连(否则 actions/checkout 会临时改 HOME 丢掉代理配置导致 fetch 失败)
+      - name: Stage repo from local disk (no network checkout)
+        shell: bash
+        env:
+          MSYS_NO_PATHCONV: 1
+        run: |
+          echo "Copying local repo tree into workspace (avoids github.com:443 GFW block)..."
+          rm -rf "$GITHUB_WORKSPACE"/*
+          cp -r /d/AirSim/mission/px4-airsim-drone-sim/. "$GITHUB_WORKSPACE"/
+          echo "Copied. Workspace top-level:"
+          ls -la "$GITHUB_WORKSPACE"
 
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
