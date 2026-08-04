@@ -13,11 +13,14 @@ jobs:
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
         run: |
-          # 本机 runner 的 Git Bash(MSYS2) 既不会把 D:/ 转反斜杠, 也不认 /mnt/d/(会整段吞掉)。
-          # 唯一可靠路径: 用 YAML 单引号保留 Windows 反斜杠 D:\, 作为 wsl 的【直接参数】,
-          # wsl 原生把 D:\x 转成 /mnt/d/x(这是 wsl 唯一会做的参数路径转换)。
+          # 本机 runner 的 Git Bash(MSYS2) 路径转换的大坑:
+          #   /mnt/d/  -> MSYS2 不认, 整段吞掉
+          #   D:/      -> 原样过, 但 wsl 不转换 forward slash
+          #   D:\      -> 反斜杠被 MSYS2 吞掉 -> D:AirSim...
+          # 唯一能完整走通 MSYS2->wsl 双向转换的: Git Bash 原生盘符 /d/AirSim/...
+          #   MSYS2 可靠转成 Windows D:\, wsl 再把 D:\ 原生转回 /mnt/d/ (wsl 只认反斜杠 Windows 路径做参数转换)
           # 不用 bash -c(其内部 $()/引号会被 wsl 脆弱解析); 直接把脚本路径+参数作为 wsl 直接参数。
-          wsl -d Ubuntu-22.04 bash 'D:\AirSim\mission\px4-airsim-drone-sim\scripts\run_sih_selfhosted.sh' 'D:\AirSim\mission\px4-airsim-drone-sim'
+          wsl -d Ubuntu-22.04 bash "/d/AirSim/mission/px4-airsim-drone-sim/scripts/run_sih_selfhosted.sh" "/d/AirSim/mission/px4-airsim-drone-sim"
 
       - name: Upload SIH trajectory artifact
         if: always()
