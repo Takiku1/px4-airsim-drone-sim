@@ -5,7 +5,7 @@
 set -e
 # 非交互 wsl shell 的 PATH 可能不全, 显式补上标准路径
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-REPO="$1"
+REPO="${1:-/mnt/d/AirSim/mission/px4-airsim-drone-sim}"
 RC=0
 
 # 守卫: 路径必须有效且含 square_mission.py, 否则提前报错(避免下面 bash 找不到文件 -> 127)

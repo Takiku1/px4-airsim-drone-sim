@@ -13,11 +13,12 @@ jobs:
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
         env:
-          MSYS_NO_PATHCONV: 1   # 彻底关闭 Git Bash 对参数里 /mnt/d/... 的路径转换
+          MSYS_NO_PATHCONV: 1   # 关键: 阻止 Git Bash(MSYS2) 把 D:/ 改回反斜杠 D:\, 让 wsl 内部自己转
         run: |
-          # 仓库在 WSL 内的路径是固定的 (/mnt/d/ == Windows D:), 直接硬编码进单引号 payload,
-          # 不依赖 wslpath / env 变量 / sed —— 这些在前几版都因 MSYS 转换或发行版差异返回空, 导致 127。
-          wsl -d Ubuntu-22.04 -- bash -c 'REPO=/mnt/d/AirSim/mission/px4-airsim-drone-sim; echo "repo wsl path: $REPO"; ls -l "$REPO/scripts/run_sih_selfhosted.sh" && bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"'
+          # 根因复盘: Git Bash 的 MSYS2 不认 /mnt/d/ 挂载点(它自己的盘符是 /d/), 直接写 /mnt/d/ 进 payload 会被整段吞掉 -> REPO 空 -> 127
+          # 正确做法: 用 Git Bash 认的 D:/ 形式传(forward slash), MSYS_NO_PATHCONV 防止它反斜杠化;
+          # wsl 内部用纯 bash sed 把 D:/x 转成 /mnt/d/x(不经过 MSYS2, 也不依赖 wslpath)
+          wsl -d Ubuntu-22.04 -- bash -c 'WIN="D:/AirSim/mission/px4-airsim-drone-sim"; REPO=$(echo "$WIN" | sed -E "s|^([A-Za-z]):/|/mnt/\L\1/|"); echo "repo wsl path: $REPO"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"'
 
       - name: Upload SIH trajectory artifact
         if: always()
