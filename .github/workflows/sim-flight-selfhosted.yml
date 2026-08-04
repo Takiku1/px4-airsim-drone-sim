@@ -11,16 +11,13 @@ jobs:
       # 自托管 runner 跑在本人机器上, 代码就在本机 D:\AirSim\mission\px4-airsim-drone-sim
       # 直接让 wsl 跑本地仓库: 零拷贝 / 零联网(checkout 被 GFW 掐 github.com:443; cp/tar 又踩 Windows 只读对象权限)
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
-        shell: bash
-        env:
-          MSYS_NO_PATHCONV: 1
+        # 关键: 用 powershell 而非 bash(Git Bash/MSYS2)调用 wsl。
+        #   MSYS2 会对传给 wsl.exe 的 argv 做路径转换/剥离, 把 /mnt/d/... 吞掉 -> $REPO 空 -> 127。
+        #   PowerShell 不做 MSYS2 转换, /mnt/d/... 原样进 wsl, wsl 的 bash 直接用它。
+        #   (artifact 上传那步用 bash 没问题, 因为 path: D:\... 由 JS action 读, 不经 MSYS2 argv 转换)
+        shell: powershell
         run: |
-          # 路径方案(经多轮迭代最终稳定版):
-          #   把 WSL 绝对路径【直接写死在单引号 payload 内】。MSYS2(NO_PATHCONV=1) 会原样传给 wsl,
-          #   不依赖 "把 D:/ 转成 /mnt/d/" 的脆弱展开 —— 此前用 WIN=D:/...; ${WIN:0:1}; ${WIN:2}
-          #   把 $REPO 算成了空, 导致拼出 "bash /scripts/..." -> 127 找不到文件。
-          #   payload 里只有纯 POSIX 路径 /mnt/d/..., MSYS2 不解析它, wsl 的 bash 直接用它。
-          wsl -d Ubuntu-22.04 -- bash -c 'REPO=/mnt/d/AirSim/mission/px4-airsim-drone-sim; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"'
+          wsl -d Ubuntu-22.04 bash /mnt/d/AirSim/mission/px4-airsim-drone-sim/scripts/run_sih_selfhosted.sh /mnt/d/AirSim/mission/px4-airsim-drone-sim
 
       - name: Upload SIH trajectory artifact
         if: always()
