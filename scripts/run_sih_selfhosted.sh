@@ -64,8 +64,11 @@ echo "== fly square + score =="
 MISSION="/mnt/d/AirSim/mission"
 mkdir -p "$MISSION"
 # 注意: grep 找不到时返回非 0, 用 || true 防止 set -e 提前退出
-# 用 timeout 包裹, 防止 MAVSDK 连接/飞行任何分支卡死(之前 wait_connected 无超时导致整条 run 挂 27 分钟)
-OUT=$(timeout 360 python3 "$REPO/square_mission.py" --out-dir "$MISSION" 2>&1 | tee /dev/stderr | grep -oP '轨迹: \K\S+' || true)
+# 用 timeout 包裹, 防止 MAVSDK 连接/飞行任何分支卡死
+# 输出先落盘 /tmp/mission.log 再 cat 到 GitHub 日志(规避 runner 下 /dev/stderr 无权限导致 tee 失败、详细日志丢失)
+timeout 360 python3 "$REPO/square_mission.py" --out-dir "$MISSION" > /tmp/mission.log 2>&1 || true
+cat /tmp/mission.log
+OUT=$(grep -oP '轨迹: \K\S+' /tmp/mission.log || true)
 latest="$OUT"
 if [ -z "$latest" ] || [ ! -f "$latest" ]; then
   echo "ERROR: square_mission.py 未产生轨迹 CSV (捕获到: '$latest')"
