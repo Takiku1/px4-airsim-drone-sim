@@ -15,11 +15,12 @@ jobs:
         env:
           MSYS_NO_PATHCONV: 1
         run: |
-          # 路径转换最终方案(经多轮迭代验证):
-          #   MSYS2 把 /d/AirSim/... 可靠转成 D:/AirSim/...(forward slash, 不会被吞, 也不触发 wsl 转换)
-          #   进 wsl 后用【纯 bash 参数展开】把 D:/x 转成 /mnt/d/x(无 wslpath/sed/引号, 最稳)
-          #   不用反斜杠(被 MSYS2 当转义吞掉)、不用双引号(被 MSYS2 转义成 \")、不用 wslpath(反斜杠形式返回空)
-          wsl -d Ubuntu-22.04 -- bash -c 'WIN=D:/AirSim/mission/px4-airsim-drone-sim; D=${WIN:0:1}; D=${D,,}; REPO=/mnt/$D/${WIN:2}; bash $REPO/scripts/run_sih_selfhosted.sh $REPO'
+          # 路径方案(经多轮迭代最终稳定版):
+          #   把 WSL 绝对路径【直接写死在单引号 payload 内】。MSYS2(NO_PATHCONV=1) 会原样传给 wsl,
+          #   不依赖 "把 D:/ 转成 /mnt/d/" 的脆弱展开 —— 此前用 WIN=D:/...; ${WIN:0:1}; ${WIN:2}
+          #   把 $REPO 算成了空, 导致拼出 "bash /scripts/..." -> 127 找不到文件。
+          #   payload 里只有纯 POSIX 路径 /mnt/d/..., MSYS2 不解析它, wsl 的 bash 直接用它。
+          wsl -d Ubuntu-22.04 -- bash -c 'REPO=/mnt/d/AirSim/mission/px4-airsim-drone-sim; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"'
 
       - name: Upload SIH trajectory artifact
         if: always()
