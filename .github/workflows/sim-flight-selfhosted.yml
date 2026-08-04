@@ -8,25 +8,15 @@ jobs:
   self-hosted-sih-flight:
     runs-on: self-hosted
     steps:
-      # 自托管 runner 跑在本人机器上, 代码已在本机 D:\AirSim\mission\px4-airsim-drone-sim
-      # 直接拷进 workspace, 完全绕过 github.com:443 的 GFW 直连(否则 actions/checkout 会临时改 HOME 丢掉代理配置导致 fetch 失败)
-      # 用 tar 管道复制并排除 .git: 避免 cp -r 拷贝 Git 只读对象文件(0444)在 Windows 端 Permission denied
-      - name: Stage repo from local disk (no network checkout)
-        shell: bash
-        run: |
-          echo "Copying local repo tree into workspace (no .git; avoids GFW + read-only object perms)..."
-          rm -rf "$GITHUB_WORKSPACE"/*
-          tar -c --exclude='.git' -f - -C /d/AirSim/mission/px4-airsim-drone-sim . | tar -x -f - -C "$GITHUB_WORKSPACE"
-          echo "Copied. Workspace top-level:"
-          ls -la "$GITHUB_WORKSPACE"
-
+      # 自托管 runner 跑在本人机器上, 代码就在本机 D:\AirSim\mission\px4-airsim-drone-sim
+      # 直接让 wsl 跑本地仓库: 零拷贝 / 零联网(checkout 被 GFW 掐 github.com:443; cp/tar 又踩 Windows 只读对象权限)
       - name: Build & run PX4 SIH, fly square, assert squareness > 80
         shell: bash
         env:
           MSYS_NO_PATHCONV: 1   # 关掉 Git Bash 对传给 wsl.exe 的 D:\ 参数的自动路径转换(否则 D:\ 变 /d/, wslpath 解析为空)
         run: |
           # 用单引号 payload + 位置参数传 Windows 路径, MSYS_NO_PATHCONV 保证 D:\ 原样传入
-          wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "${{ github.workspace }}"
+          wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "D:\AirSim\mission\px4-airsim-drone-sim"
 
       - name: Upload SIH trajectory artifact
         if: always()
