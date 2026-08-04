@@ -10,14 +10,13 @@ jobs:
     steps:
       # 自托管 runner 跑在本人机器上, 代码已在本机 D:\AirSim\mission\px4-airsim-drone-sim
       # 直接拷进 workspace, 完全绕过 github.com:443 的 GFW 直连(否则 actions/checkout 会临时改 HOME 丢掉代理配置导致 fetch 失败)
+      # 用 tar 管道复制并排除 .git: 避免 cp -r 拷贝 Git 只读对象文件(0444)在 Windows 端 Permission denied
       - name: Stage repo from local disk (no network checkout)
         shell: bash
-        env:
-          MSYS_NO_PATHCONV: 1
         run: |
-          echo "Copying local repo tree into workspace (avoids github.com:443 GFW block)..."
+          echo "Copying local repo tree into workspace (no .git; avoids GFW + read-only object perms)..."
           rm -rf "$GITHUB_WORKSPACE"/*
-          cp -r /d/AirSim/mission/px4-airsim-drone-sim/. "$GITHUB_WORKSPACE"/
+          tar -c --exclude='.git' -f - -C /d/AirSim/mission/px4-airsim-drone-sim . | tar -x -f - -C "$GITHUB_WORKSPACE"
           echo "Copied. Workspace top-level:"
           ls -la "$GITHUB_WORKSPACE"
 
