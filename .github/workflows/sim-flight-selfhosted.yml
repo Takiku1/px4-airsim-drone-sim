@@ -15,8 +15,10 @@ jobs:
         env:
           MSYS_NO_PATHCONV: 1   # 关掉 Git Bash 对传给 wsl.exe 的 D:\ 参数的自动路径转换(否则 D:\ 变 /d/, wslpath 解析为空)
         run: |
-          # 用单引号 payload + 位置参数传 Windows 路径, MSYS_NO_PATHCONV 保证 D:\ 原样传入
-          wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "D:\AirSim\mission\px4-airsim-drone-sim"
+          # 用单引号字面量存 Windows 路径, 避開 YAML 双引号对反斜杠 \A \m \p 的转义吃掉
+          WINREPO='D:\AirSim\mission\px4-airsim-drone-sim'
+          echo "WINREPO=$WINREPO"
+          wsl -d Ubuntu-22.04 -- bash -c 'REPO=$(wslpath -u "$1"); echo "repo wsl path: $REPO"; ls -l "$REPO/scripts/run_sih_selfhosted.sh"; bash "$REPO/scripts/run_sih_selfhosted.sh" "$REPO"' bash "$WINREPO"
 
       - name: Upload SIH trajectory artifact
         if: always()
