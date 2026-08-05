@@ -27,17 +27,10 @@ jobs:
           path: D:\AirSim\mission\trajectory_*.csv
 
       - name: Regression check vs baseline
-        # 复用与 flight 步骤相同的 wsl 调用方式(PowerShell 不做 MSYS2 路径转换)。
-        # 取本次飞行最新产出的 trajectory CSV, 与基线 JSON 对比;
-        # baseline_check.py 遇到 FAIL(exit 1) 会使整 step 失败 -> 整个 job 变红。
+        # 与 flight 步骤(Step 2)完全相同的调用模式: 单行 wsl 调独立 .sh 脚本。
+        # 之前用多行 `bash -c '...'` 被 PowerShell 的引号/换行处理弄崩(假阳性),
+        # 抽到脚本文件后规避了嵌套引号问题。
+        # baseline_check.py 遇到 FAIL(exit 1) -> 整 step 失败 -> job 变红。
         shell: powershell
         run: |
-          wsl -d Ubuntu-22.04 bash -c '
-            export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-            REPO=/mnt/d/AirSim/mission/px4-airsim-drone-sim
-            MISSION=/mnt/d/AirSim/mission
-            latest=$(ls -t "$MISSION"/trajectory_*.csv 2>/dev/null | head -1)
-            if [ -z "$latest" ]; then echo "ERROR: 未找到本次飞行的轨迹 CSV"; exit 2; fi
-            echo "== baseline check on: $latest =="
-            python3 "$REPO/scripts/baseline_check.py" --input "$latest"
-          '
+          wsl -d Ubuntu-22.04 bash /mnt/d/AirSim/mission/px4-airsim-drone-sim/scripts/run_baseline_check.sh /mnt/d/AirSim/mission/px4-airsim-drone-sim

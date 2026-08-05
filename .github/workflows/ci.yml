@@ -24,7 +24,7 @@ jobs:
           python -m py_compile analyze_ulg.py square_mission.py scripts/baseline_check.py
       - name: Shell syntax check
         run: |
-          for f in run_flight_mission.sh extract_ulg.sh diag_ulg.sh; do
+          for f in run_flight_mission.sh extract_ulg.sh diag_ulg.sh scripts/run_baseline_check.sh scripts/run_sih_selfhosted.sh; do
             bash -n "$f" || exit 1
           done
 
