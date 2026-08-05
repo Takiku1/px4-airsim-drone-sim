@@ -1,0 +1,29 @@
+name: PX4 Fault Injection Regression (Self-Hosted, SIH)
+
+# 安全: 仅手动触发。绝不开 push / pull_request —— 公开仓库的 fork PR 会在本机执行任意代码。
+# 与本仓库另一份 sim-flight-selfhosted.yml(正常方形飞行门禁)并列: 一个测"正常能飞",
+# 一个测"故障下 PX4 failsafe 行为正确"。两者都只在本人 self-hosted runner 上跑真实 PX4 SITL。
+on:
+  workflow_dispatch:
+
+jobs:
+  self-hosted-fault-regression:
+    runs-on: self-hosted
+    steps:
+      # 自托管 runner 跑在本人机器上, 代码就在本机 D:\AirSim\mission\px4-airsim-drone-sim
+      # 直接让 wsl 跑本地仓库: 零拷贝 / 零联网(checkout 被 GFW 掐 github.com:443; cp/tar 又踩 Windows 只读对象权限)
+      - name: Build & run PX4 SIH, inject 5 fault cases, assert failsafe behavior
+        # 关键: 用 powershell 而非 bash(Git Bash/MSYS2)调用 wsl。
+        #   MSYS2 会对传给 wsl.exe 的 argv 做路径转换/剥离, 把 /mnt/d/... 吞掉 -> $REPO 空 -> 127。
+        #   PowerShell 不做 MSYS2 转换, /mnt/d/... 原样进 wsl, wsl 的 bash 直接用它。
+        # run_fault_test.sh 会依次重启 SIH 跑 case 1-5, 各输出 PASS/FAIL, 全绿才 exit 0。
+        shell: powershell
+        run: |
+          wsl -d Ubuntu-22.04 bash /mnt/d/AirSim/mission/px4-airsim-drone-sim/scripts/run_fault_test.sh /mnt/d/AirSim/mission/px4-airsim-drone-sim
+
+      - name: Upload fault-case telemetry artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fault-cases
+          path: D:\AirSim\mission\fault_cases\*.csv

@@ -13,3 +13,7 @@ mission_status.txt
 # 本地杂项
 disk_cleanup_plan_*.md
 *.log
+
+# 故障注入调试用 spike 脚本(一次性验证, 不入仓库)
+scripts/spike_fault.py
+scripts/spike_launcher.sh
