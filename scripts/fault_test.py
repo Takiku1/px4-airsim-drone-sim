@@ -31,6 +31,13 @@ from mavsdk import System
 from mavsdk.offboard import OffboardError, PositionNedYaw
 from mavsdk.failure import FailureUnit, FailureType
 
+# 断言逻辑抽离到 fault_asserts (纯函数, 无 mavsdk 依赖), 方便 pytest 在无 mavsdk
+# 环境(如 GitHub ubuntu-latest)直接 import 做故障遥测回归。脚本目录已自动在 sys.path,
+# 但显式插入一次, 避免被其它路径顺序干扰。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fault_asserts import (assert_gps, assert_keep_flying, assert_link_loss,
+                           assert_geofence, find_injection_idx)
+
 DEFAULT_ADDR = os.environ.get("MAVSDK_ADDR", "udp://:14540")
 # case 4 用 GCS 遥测链路单独记录(与控制链路 14540 分离, 才能真实模拟断链)
 # PX4 GCS 实例: local 18570 / remote 14550, 遥测发往 14550 -> 客户端监听 14550 收遥测
@@ -176,14 +183,6 @@ async def goto(drone, rec, north, east, alt, label, tol, timeout, hold):
             return False
 
 
-def find_injection_idx(rec, t_inj):
-    # 返回第一个 t >= t_inj 的行(注入时刻), 不是最后一个
-    for i, r in enumerate(rec.rows):
-        if r["t"] >= t_inj:
-            return i
-    return len(rec.rows) - 1
-
-
 async def safe(coro, label, t=12):
     """带超时的动作包装, 避免已降落/异常态下 MAVSDK 调用无限阻塞。"""
     try:
@@ -191,89 +190,6 @@ async def safe(coro, label, t=12):
     except Exception as e:
         print(f"[warn] {label} 超时/异常(忽略): {e}")
         return None
-
-
-# ---------------------------------------------------------------------------
-# 断言函数: 返回 (passed: bool, detail: str)
-# ---------------------------------------------------------------------------
-def assert_gps(rec, inj_idx, alt):
-    after = rec.rows[inj_idx:]
-    if not after:
-        return False, "注入后无遥测"
-    modes = {r["mode"] for r in after}
-    left = any(m and m != "OFFBOARD" for m in modes)
-    # 高度: 注入点高度 vs 之后最低高度
-    alt_inj = -rec.rows[inj_idx]["down_m"]
-    min_alt = min(-r["down_m"] for r in after)
-    descended = (alt_inj - min_alt) > 1.0
-    # 水平位移
-    n0, e0 = rec.rows[inj_idx]["north_m"], rec.rows[inj_idx]["east_m"]
-    max_horiz = max(math.hypot(r["north_m"] - n0, r["east_m"] - e0) for r in after)
-    ok = left and descended
-    return ok, (f"离开offboard={left} 注入高度={alt_inj:.2f}m 最低={min_alt:.2f}m "
-                f"下降={(alt_inj-min_alt):.2f}m 最大水平位移={max_horiz:.2f}m")
-
-
-def assert_keep_flying(rec, inj_idx, label):
-    after = rec.rows[inj_idx:]
-    if not after:
-        return False, "注入后无遥测"
-    modes = [r["mode"] for r in after if r["mode"]]
-    failsafe = any(m in ("LAND", "RETURN") for m in modes)
-    # 位移总量(是否继续飞)
-    n0, e0 = rec.rows[inj_idx]["north_m"], rec.rows[inj_idx]["east_m"]
-    path = 0.0
-    px, py = n0, e0
-    for r in after:
-        path += math.hypot(r["north_m"] - px, r["east_m"] - py)
-        px, py = r["north_m"], r["east_m"]
-    # 高度有效: 注入后 EKF 仍给出合理高度估计(气压计/磁力计失效时回落 GPS 高度,
-    # 应仍约 5m, 不会塌到 0 或 NaN)。容差放宽到 [0, 20]m。
-    alts = [-r["down_m"] for r in after]
-    alt_valid = all(0.0 < a < 20.0 for a in alts)
-    ok = (not failsafe) and path > 3.0 and alt_valid
-    return ok, (f"进入failsafe={failsafe} 继续飞行路径={path:.2f}m 高度有效={alt_valid} "
-                f"(末模式={modes[-1] if modes else '-'})")
-
-
-def assert_link_loss(rec, inj_idx, alt):
-    after = rec.rows[inj_idx:]
-    if not after:
-        return False, "注入后无遥测"
-    modes = {r["mode"] for r in after}
-    left = any(m and m != "OFFBOARD" for m in modes)
-    n0, e0 = rec.rows[inj_idx]["north_m"], rec.rows[inj_idx]["east_m"]
-    max_horiz = max(math.hypot(r["north_m"] - n0, r["east_m"] - e0) for r in after)
-    alt_inj = -rec.rows[inj_idx]["down_m"]
-    max_alt = max(-r["down_m"] for r in after)
-    min_alt = min(-r["down_m"] for r in after)
-    not_climb = (max_alt - alt_inj) < 0.8
-    descended = (alt_inj - min_alt) > 1.0   # 真正执行 blind land 下降
-    ok = left and max_horiz < 2.5 and not_climb and descended
-    return ok, (f"离开offboard={left} 最大水平位移={max_horiz:.2f}m "
-                f"注入高度={alt_inj:.2f}m 最高={max_alt:.2f}m 最低={min_alt:.2f}m "
-                f"下降={(alt_inj-min_alt):.2f}m 不爬升={not_climb}")
-
-
-def assert_geofence(rec, inj_idx):
-    after = rec.rows[inj_idx:]
-    if not after:
-        return False, "越界后无遥测"
-    modes = [r["mode"] for r in after if r["mode"]]
-    entered_return = any(m == "RETURN" for m in modes) or any(m and m != "OFFBOARD" for m in modes)
-    # 越界后是否朝 HOME (north/east 回落)
-    peak = max(after, key=lambda r: math.hypot(r["north_m"], r["east_m"]))
-    pi = after.index(peak)
-    tail = after[pi + 1:]
-    homeward = False
-    if tail:
-        dist_end = math.hypot(tail[-1]["north_m"], tail[-1]["east_m"])
-        dist_peak = math.hypot(peak["north_m"], peak["east_m"])
-        homeward = dist_end < dist_peak
-    ok = entered_return
-    return ok, (f"进入RETURN/离开offboard={entered_return} 峰值距离={math.hypot(peak['north_m'],peak['east_m']):.1f}m "
-                f"末距离HOME={math.hypot(tail[-1]['north_m'],tail[-1]['east_m']):.1f}m 朝家={homeward} "
-                f"(末模式={modes[-1] if modes else '-'})")
 
 
 # ---------------------------------------------------------------------------
@@ -391,8 +307,8 @@ async def run_case4(telem, case, alt, side, tol, seg_timeout, hold, out_dir):
         alive_server = ""
     print(f"[dbg ] pub.returncode={pub.returncode} 残留mavsdk_server(50052)={alive_server or '无'}")
     await asyncio.sleep(14)  # offboard 超时(2s) + blind land 下降
-    inj_idx = find_injection_idx(rec, inj_idx_holder["t"])
-    passed, detail = assert_link_loss(rec, inj_idx, alt)
+    inj_idx = find_injection_idx(rec.rows, inj_idx_holder["t"])
+    passed, detail = assert_link_loss(rec.rows, inj_idx, alt)
     print("[rec ] 停止记录 ...")
     await safe(rec.stop(), "rec.stop")
     try:
@@ -468,8 +384,8 @@ async def fly_and_inject(drone, rec, case, addr, alt, side, tol, seg_timeout, ho
             await drone.failure.inject(FailureUnit.SENSOR_GPS, FailureType.OFF, 0)
             await goto(drone, rec, side, side, alt, "edge2_east", tol, seg_timeout, hold)
             await asyncio.sleep(8)
-            inj_idx = find_injection_idx(rec, inj_idx_holder.get("t", 0))
-            passed, detail = assert_gps(rec, inj_idx, alt)
+            inj_idx = find_injection_idx(rec.rows, inj_idx_holder.get("t", 0))
+            passed, detail = assert_gps(rec.rows, inj_idx, alt)
 
         elif case == 2:  # 气压计故障
             mark_injection()
@@ -479,8 +395,8 @@ async def fly_and_inject(drone, rec, case, addr, alt, side, tol, seg_timeout, ho
                                (0, 0, "edge4_west")]:
                 await goto(drone, rec, n, e, alt, lb, tol, seg_timeout, hold)
             await asyncio.sleep(3)
-            inj_idx = find_injection_idx(rec, inj_idx_holder.get("t", 0))
-            passed, detail = assert_keep_flying(rec, inj_idx, "baro")
+            inj_idx = find_injection_idx(rec.rows, inj_idx_holder.get("t", 0))
+            passed, detail = assert_keep_flying(rec.rows, inj_idx, "baro")
 
         elif case == 3:  # 磁力计故障
             mark_injection()
@@ -490,16 +406,16 @@ async def fly_and_inject(drone, rec, case, addr, alt, side, tol, seg_timeout, ho
                                (0, 0, "edge4_west")]:
                 await goto(drone, rec, n, e, alt, lb, tol, seg_timeout, hold)
             await asyncio.sleep(3)
-            inj_idx = find_injection_idx(rec, inj_idx_holder.get("t", 0))
-            passed, detail = assert_keep_flying(rec, inj_idx, "mag")
+            inj_idx = find_injection_idx(rec.rows, inj_idx_holder.get("t", 0))
+            passed, detail = assert_keep_flying(rec.rows, inj_idx, "mag")
 
         elif case == 5:  # 地理围栏越界
             mark_injection()
             print("[inj ] 飞出围栏 (N=25) -> 期望 RETURN")
             await goto(drone, rec, 25.0, 0.0, alt, "breach_out", tol, seg_timeout, hold)
             await asyncio.sleep(10)
-            inj_idx = find_injection_idx(rec, inj_idx_holder.get("t", 0))
-            passed, detail = assert_geofence(rec, inj_idx)
+            inj_idx = find_injection_idx(rec.rows, inj_idx_holder.get("t", 0))
+            passed, detail = assert_geofence(rec.rows, inj_idx)
 
     except Exception as e:
         detail = f"飞行/断言异常: {e}"

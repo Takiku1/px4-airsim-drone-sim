@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/ci.yml/badge.svg)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/ci.yml)
 [![Phase 2](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/sim-flight.yml/badge.svg)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/sim-flight.yml)
+[![Fault Regression (self-hosted)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/fault-regression-selfhosted.yml/badge.svg)](https://github.com/Takiku1/px4-airsim-drone-sim/actions/workflows/fault-regression-selfhosted.yml)
 
 > 无需实机，即可在 PC 上搭建一条完整的无人机**仿真 / 系统测试**链路：
 > **PX4 SITL（WSL2） ↔ AirSim（UE5.3 / Windows） ↔ MAVSDK-Python ↔ QGroundControl**，
@@ -60,6 +61,9 @@
 | `analyze_ulg.py` | 纯标准库轨迹分析：读 `ulog2csv` 产出的 `vehicle_local_position` CSV，计算**方形度评分（0–100）**、闭合误差、高度稳定性、最大速度，并输出俯视轨迹 SVG。 |
 | `extract_ulg.sh` | 找最新 `ulg` → 拷到 Windows → `ulog2csv` → 列出 CSV，为分析做准备。 |
 | `diag_ulg.sh` | PX4 日志快速诊断（端口、连接、关键参数核对）。 |
+| `scripts/fault_test.py` | **故障注入与容错测试主脚本**：在 PX4 SIH + MAVSDK offboard 下注入 5 类故障（GPS 丢失 / 气压计 / 磁力计 / 链路丢失 / 地理围栏），断言 PX4 failsafe 行为并写出独立遥测 CSV。链路丢失用例通过独立子进程 + 强杀 `mavsdk_server` 子树真实模拟断链。 |
+| `scripts/run_fault_test.sh` | 故障套件启动器：拉起 SIH → 逐用例重启保证隔离 → 各输出 PASS/FAIL，全绿才退出 0。 |
+| `scripts/fault_asserts.py` | 纯函数断言（无 `mavsdk` 依赖），被 `fault_test.py` 与 pytest 回归共同复用。 |
 | `requirements.txt` | Python 依赖（`mavsdk`）。 |
 
 > 注：脚本中 `D:\AirSim\mission`、`/mnt/d/AirSim/mission`、`$HOME/PX4-Autopilot` 为作者本机路径，
@@ -140,6 +144,39 @@ MPC_XY_CRUISE  = 1.5
 > 可在本机部署 **self-hosted runner**（WSL 原生跑 PX4，规避 GitHub runner 的 docker 限制）。
 > `check_square.py` 读取 `square_mission.py` 输出的 MAVSDK 轨迹 CSV（`north_m/east_m/down_m/phase`），
 > 按相位提取四角点，计算边长 / 闭合 / 夹角 / 高度稳定性并评分，复用 `analyze_ulg.py` 的加权方法论。
+
+---
+
+## 故障注入与容错回归测试
+
+在 SIH（headless，无需 AirSim / GPU）下注入 5 类典型故障，断言 PX4 的失效保护（failsafe）行为是否符合预期。每个用例独立重启 SIH，保证状态干净、CI 可复现。
+
+| 用例 | 故障 | 期望 PX4 行为 | 关键断言 |
+| --- | --- | --- | --- |
+| 1 | GPS 丢失 | 盲降（blind land） | 离开 OFFBOARD + 高度下降 >1m |
+| 2 | 气压计故障 | EKF 回落 GPS 高度，继续飞 | 保持 OFFBOARD + 继续飞行 + 高度有效 |
+| 3 | 磁力计故障 | EKF 降级，继续飞 | 保持 OFFBOARD + 继续飞行 + 高度有效 |
+| 4 | 链路丢失 | 数据链路失效保护 | 离开 OFFBOARD + 原地（水平 <2.5m）+ 不爬升 + 下降 >1m |
+| 5 | 地理围栏越界 | RETURN | 进入 RETURN / 离开 OFFBOARD + 朝 HOME 返航 |
+
+**链路丢失的真实模拟（关键坑点）**：PX4 的 offboard 丢失判定依据是 *setpoint 新鲜度*（`offboard_control_mode` 消息是否持续到达），而非链路整体心跳。MAVSDK 的 `System()` 会以子进程方式拉起独立的 `mavsdk_server` 并持有真正的 MAVLink 套接字与 setpoint 循环——仅杀掉 Python 控制进程会把它**孤儿化**，使其继续发 setpoint，PX4 永不判链路丢失。因此 case 4 让控制链路跑在独立子进程，注入 = `SIGKILL` 该子进程及其整个进程树（含 `mavsdk_server` 子进程），才能触发真正的 blind land。
+
+本地运行（5 个用例全跑，约 6 分钟）：
+```bash
+bash scripts/run_fault_test.sh /mnt/d/AirSim/mission/px4-airsim-drone-sim
+# 单跑某用例: 末尾加用例号, 如 ... 4
+```
+
+### pytest 回归（golden fixture）
+
+真实 SITL 跑出的遥测 CSV 固化为 `tests/fixtures/fault/fault_case{1..5}.csv`，由 `tests/test_fault_regression.py` 用 `fault_asserts` 纯函数反复校验。CI 中**无需拉起真实 SITL** 即可守住"故障注入断言逻辑没被改坏"的回归门槛：
+```bash
+python3 -m pytest tests/test_fault_regression.py -v
+```
+
+### self-hosted CI
+
+`.github/workflows/fault-regression-selfhosted.yml` 与正常飞行门禁 `sim-flight-selfhosted.yml` **并列**，均只手动触发（`workflow_dispatch`，避免公开仓库 fork PR 在本机执行代码）：在本人 self-hosted runner 上 `workflow_dispatch` → WSL2 PX4 SIH → 跑 5 故障用例 → 全绿才通过。遥测 CSV 作为 artifact 上传。
 
 ---
 
