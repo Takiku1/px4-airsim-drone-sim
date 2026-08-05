@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
       - name: Python syntax check
         run: |
-          python -m py_compile analyze_ulg.py square_mission.py baseline_check.py
+          python -m py_compile analyze_ulg.py square_mission.py scripts/baseline_check.py
       - name: Shell syntax check
         run: |
           for f in run_flight_mission.sh extract_ulg.sh diag_ulg.sh; do
