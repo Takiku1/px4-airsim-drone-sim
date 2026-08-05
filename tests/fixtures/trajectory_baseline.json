@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-05T21:58:00+08:00",
+  "description": "PX4 正方形航线飞行基线指标。baseline_check.py 用 baseline 块逐项对比新飞行(套 tolerances 规则);sources 块记录所有已知飞行(批量回放/趋势检测用)。基线锚定仓库内 trajectory_golden.csv(限速 v3, 已验证与 155050 逐字节同指标)。指标算法与 check_square.py(格式A/mavsdk) 和 analyze_ulg.py(格式B/ulg) 一致, 两种格式对同一飞行均得 ~95.3。",
+  "reference_flight": "tests/fixtures/trajectory_golden.csv",
+
+  "metrics": {
+    "squareness": {"label": "方形度评分", "unit": "score(0-100)", "higher_is_better": true,  "computed_by": "check_square.py / analyze_ulg.py"},
+    "mean_side":  {"label": "四边边长均值", "unit": "m",  "higher_is_better": null, "computed_by": "四条腿终点间距均值"},
+    "side_dev":   {"label": "四边边长偏差(最大|边长-均值|)", "unit": "m", "higher_is_better": false},
+    "closure":    {"label": "闭合误差", "unit": "m", "higher_is_better": false, "computed_by": "末腿终点距起飞点水平距离"},
+    "alt_mean":   {"label": "巡航高度均值", "unit": "m", "higher_is_better": null, "computed_by": "巡航腿 down_m 取反均值 (ulg: -z)"},
+    "alt_std":    {"label": "巡航高度标准差", "unit": "m", "higher_is_better": false},
+    "max_speed":  {"label": "最大速度", "unit": "m/s", "higher_is_better": false, "computed_by": "sqrt(vn^2+ve^2+vd^2) 或 sqrt(vx^2+vy^2) 峰值"},
+    "duration":   {"label": "飞行时长", "unit": "s", "higher_is_better": null, "computed_by": "t 跨度 或 (timestamp[-1]-timestamp[0])/1e6"}
+  },
+
+  "baseline": {
+    "squareness": 95.333,
+    "mean_side": 10.305,
+    "side_dev": 0.431,
+    "closure": 0.485,
+    "alt_mean": 4.978,
+    "alt_std": 0.048,
+    "max_speed": 2.371,
+    "duration": 46.995
+  },
+
+  "tolerances": {
+    "squareness_drop_warn": 5.0,
+    "squareness_drop_fail": 10.0,
+    "closure_increase_warn": 0.5,
+    "max_speed_increase_fail": 3.0,
+    "rule_summary": "方形度下降<5 => PASS; 5-10 => WARN; >=10 => FAIL; 闭合误差增加>=0.5m => WARN; 最大速度增加>=3m/s => FAIL。exit 0=全 PASS/WARN, exit 1=有 FAIL。"
+  },
+
+  "sources": [
+    {"file": "tests/fixtures/trajectory_golden.csv", "in_repo": true,  "format": "mavsdk", "source": "AirSim", "limit": "限速", "note": "基线基准飞行(与155050同指标)", "metrics": {"squareness": 95.333, "mean_side": 10.305, "side_dev": 0.431, "closure": 0.485, "alt_mean": 4.978, "alt_std": 0.048, "max_speed": 2.371, "duration": 46.995}},
+    {"file": "tests/fixtures/sample_local_position.csv", "in_repo": true, "format": "ulg", "source": "AirSim", "limit": "限速", "note": "格式B(ulog)范例, 同一限速v3飞行", "metrics": {"squareness": 95.291, "mean_side": 10.420, "side_dev": 0.095, "closure": 0.556, "alt_mean": 4.978, "alt_std": 0.048, "max_speed": 2.370, "duration": 65.053}},
+    {"file": "trajectory_20260803_150447.csv", "in_repo": false, "format": "mavsdk", "source": "AirSim", "limit": "不限速", "metrics": {"squareness": 92.564, "mean_side": 10.153, "side_dev": 0.769, "closure": 0.340, "alt_mean": 4.944, "alt_std": 0.118, "max_speed": 7.116, "duration": 113.059}},
+    {"file": "trajectory_20260803_153901.csv", "in_repo": false, "format": "mavsdk", "source": "AirSim", "limit": "不限速", "metrics": {"squareness": 94.568, "mean_side": 10.376, "side_dev": 0.318, "closure": 0.579, "alt_mean": 4.944, "alt_std": 0.113, "max_speed": 7.130, "duration": 113.174}},
+    {"file": "trajectory_20260803_155050.csv", "in_repo": false, "format": "mavsdk", "source": "AirSim", "limit": "限速", "metrics": {"squareness": 95.333, "mean_side": 10.305, "side_dev": 0.431, "closure": 0.485, "alt_mean": 4.978, "alt_std": 0.048, "max_speed": 2.371, "duration": 46.995}},
+    {"file": "trajectory_20260804_010916.csv", "in_repo": false, "format": "mavsdk", "source": "SIH", "limit": "限速", "metrics": {"squareness": 97.798, "mean_side": 10.312, "side_dev": 0.137, "closure": 0.306, "alt_mean": 4.984, "alt_std": 0.034, "max_speed": 1.701, "duration": 56.519}},
+    {"file": "trajectory_20260804_224532.csv", "in_repo": false, "format": "mavsdk", "source": "SIH", "limit": "限速", "metrics": {"squareness": 97.261, "mean_side": 10.294, "side_dev": 0.200, "closure": 0.365, "alt_mean": 4.988, "alt_std": 0.037, "max_speed": 1.699, "duration": 55.490}},
+    {"file": "trajectory_20260804_231736.csv", "in_repo": false, "format": "mavsdk", "source": "SIH", "limit": "限速", "metrics": {"squareness": 97.515, "mean_side": 10.289, "side_dev": 0.193, "closure": 0.295, "alt_mean": 4.989, "alt_std": 0.039, "max_speed": 1.704, "duration": 55.510}},
+    {"file": "trajectory_20260804_232843.csv", "in_repo": false, "format": "mavsdk", "source": "SIH", "limit": "限速", "metrics": {"squareness": 97.874, "mean_side": 10.257, "side_dev": 0.135, "closure": 0.321, "alt_mean": 4.991, "alt_std": 0.033, "max_speed": 1.700, "duration": 55.488}}
+  ]
+}

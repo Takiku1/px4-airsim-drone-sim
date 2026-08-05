@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
       - name: Python syntax check
         run: |
-          python -m py_compile analyze_ulg.py square_mission.py
+          python -m py_compile analyze_ulg.py square_mission.py baseline_check.py
       - name: Shell syntax check
         run: |
           for f in run_flight_mission.sh extract_ulg.sh diag_ulg.sh; do
@@ -44,3 +44,9 @@ jobs:
           pip install pytest
       - name: Run pytest
         run: pytest -v tests/
+
+      - name: Baseline regression check (golden trajectory)
+        # 用仓库内 golden 飞行固化基线, 在云端检测飞行质量退化(无需真飞)。
+        # golden = 限速 v3 (方形度 95.3) = 基线真值, 不应触发任何 FAIL。
+        run: |
+          python3 scripts/baseline_check.py --input tests/fixtures/trajectory_golden.csv
